@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>182학군단 36기 회비 관리</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+  <style>
+    body{margin:0;font-family:'Noto Sans KR',sans-serif;background:#f4f7ff;color:#0b1b3b}
+    .wrap{max-width:1100px;margin:0 auto;padding:30px}
+    h1{margin-bottom:10px}
+    .card{background:#fff;border-radius:16px;padding:20px;margin-bottom:20px;box-shadow:0 10px 25px rgba(0,0,0,.08)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+    input,button{padding:10px;border-radius:10px;border:1px solid #d0d7e6;font-size:14px}
+    button{background:#2a6cf6;color:#fff;border:none;cursor:pointer}
+    button:hover{opacity:.9}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:center}
+    th{background:#f0f4ff}
+    .sum{font-size:18px;font-weight:700}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎖️ 182학군단 36기 회비 관리</h1>
+
+  <!-- 요약 -->
+  <div class="card grid">
+    <div>총 모금액<br><span class="sum" id="totalIn">0</span> 원</div>
+    <div>총 사용액<br><span class="sum" id="totalOut">0</span> 원</div>
+    <div>잔액<br><span class="sum" id="balance">0</span> 원</div>
+  </div>
+
+  <!-- 회비 납부 -->
+  <div class="card">
+    <h3>회비 납부 입력</h3>
+    <div class="grid">
+      <input id="inName" placeholder="이름">
+      <input id="inAmount" type="number" placeholder="금액">
+      <button onclick="addIncome()">납부 등록</button>
+    </div>
+  </div>
+
+  <!-- 사용 내역 -->
+  <div class="card">
+    <h3>사용 내역 입력</h3>
+    <div class="grid">
+      <input id="outTitle" placeholder="사용 내용">
+      <input id="outAmount" type="number" placeholder="금액">
+      <input id="outFile" type="file">
+      <button onclick="addExpense()">사용 등록</button>
+    </div>
+  </div>
+
+  <!-- 납부 내역 -->
+  <div class="card">
+    <h3>회비 납부 내역</h3>
+    <table>
+      <thead><tr><th>이름</th><th>금액</th><th>일자</th></tr></thead>
+      <tbody id="incomeList"></tbody>
+    </table>
+  </div>
+
+  <!-- 사용 내역 -->
+  <div class="card">
+    <h3>회비 사용 내역</h3>
+    <table>
+      <thead><tr><th>내용</th><th>금액</th><th>영수증</th><th>일자</th></tr></thead>
+      <tbody id="expenseList"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// 🔥 Firebase 설정 (본인 프로젝트 값으로 교체)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_BUCKET",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+// 회비 납부
+async function addIncome(){
+  const name=inName.value.trim();
+  const amount=Number(inAmount.value);
+  if(!name||!amount) return alert('입력 필요');
+  await db.collection('income').add({name,amount,created:new Date()});
+  inName.value=inAmount.value='';
+}
+
+// 사용 내역
+async function addExpense(){
+  const title=outTitle.value.trim();
+  const amount=Number(outAmount.value);
+  const file=outFile.files[0];
+  if(!title||!amount) return alert('입력 필요');
+
+  let fileUrl='';
+  if(file){
+    const ref=storage.ref('receipts/'+Date.now()+"_"+file.name);
+    await ref.put(file);
+    fileUrl=await ref.getDownloadURL();
+  }
+
+  await db.collection('expense').add({title,amount,fileUrl,created:new Date()});
+  outTitle.value=outAmount.value='';
+  outFile.value='';
+}
+
+// 실시간 반영
+function listen(){
+  db.collection('income').orderBy('created','desc').onSnapshot(s=>{
+    let sum=0,html='';
+    s.forEach(d=>{const v=d.data();sum+=v.amount;html+=`<tr><td>${v.name}</td><td>${v.amount}</td><td>${v.created?.toDate().toLocaleDateString()}</td></tr>`});
+    incomeList.innerHTML=html;
+    totalIn.innerText=sum;
+    calc();
+  });
+
+  db.collection('expense').orderBy('created','desc').onSnapshot(s=>{
+    let sum=0,html='';
+    s.forEach(d=>{const v=d.data();sum+=v.amount;html+=`<tr><td>${v.title}</td><td>${v.amount}</td><td>${v.fileUrl?`<a href='${v.fileUrl}' target='_blank'>보기</a>`:''}</td><td>${v.created?.toDate().toLocaleDateString()}</td></tr>`});
+    expenseList.innerHTML=html;
+    totalOut.innerText=sum;
+    calc();
+  });
+}
+
+function calc(){
+  balance.innerText = Number(totalIn.innerText) - Number(totalOut.innerText);
+}
+
+listen();
+</script>
+</body>
+</html>
